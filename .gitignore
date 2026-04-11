@@ -1,4 +1,8 @@
 legalize-kr/
 precedent-kr/
-deep-work/
+.deep-work/
 .deep-review/reports/
+legal-workspace/
+.claude/deep-work-sessions.json
+.claude/deep-work.*.md
+.claude/settings.local.json

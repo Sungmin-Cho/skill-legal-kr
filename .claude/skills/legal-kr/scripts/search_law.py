@@ -48,14 +48,19 @@ def parse_frontmatter(text: str) -> dict:
 
 
 def detect_doc_type(filename: str) -> str:
-    """파일명으로 법령 유형을 판별한다."""
-    mapping = {
-        "법률.md": "법률",
-        "시행령.md": "시행령",
-        "시행규칙.md": "시행규칙",
-        "대통령령.md": "대통령령",
-    }
-    return mapping.get(filename, "기타")
+    """파일명으로 법령 유형을 판별한다.
+    법무부령.md, 시행규칙(총리령).md 등 변형 파일명도 올바르게 분류한다.
+    """
+    name = filename.removesuffix(".md")
+    if name == "법률":
+        return "법률"
+    if name == "시행령" or name == "대통령령":
+        return "시행령"
+    if "시행규칙" in name or "규칙" in name or "부령" in name:
+        return "시행규칙"
+    if "대통령령" in name:
+        return "대통령령"
+    return "기타"
 
 
 def extract_article(text: str, article_num: str) -> str | None:
@@ -81,11 +86,11 @@ def extract_article(text: str, article_num: str) -> str | None:
                 break
     if start_idx is None:
         return None
-    # 다음 조문 헤더까지 추출
-    next_article = re.compile(r"^#{1,6}\s+제\d+")
+    # 다음 조문 헤더 또는 부칙/별표까지 추출
+    stop_pattern = re.compile(r"^#{1,6}\s+(제\d+|부칙|별표)")
     end_idx = len(lines)
     for i in range(start_idx + 1, len(lines)):
-        if next_article.match(lines[i]):
+        if stop_pattern.match(lines[i]):
             end_idx = i
             break
     return "\n".join(lines[start_idx:end_idx]).strip()
@@ -144,7 +149,7 @@ def search_by_keyword(repo_path: str, keyword: str, doc_type: str | None, limit:
     if not kr_dir.exists():
         return []
     # subprocess로 grep 호출 (빠른 파일 목록 확보)
-    cmd = ["grep", "-rl", "--include=*.md", keyword, str(kr_dir)]
+    cmd = ["grep", "-rlF", "--include=*.md", keyword, str(kr_dir)]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         matched_files = [f.strip() for f in proc.stdout.strip().split("\n") if f.strip()]
@@ -235,7 +240,7 @@ def main():
     elif args.keyword:
         results = search_by_keyword(args.repo, args.keyword, args.doc_type, args.limit, args.snippet)
     elif args.exact:
-        results = search_exact(args.repo, args.exact, args.doc_type, args.articles, args.keyword)
+        results = search_exact(args.repo, args.exact, args.doc_type, args.articles, None)
 
     print(json.dumps(results, ensure_ascii=False, indent=2))
 

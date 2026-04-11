@@ -77,6 +77,23 @@ def make_snippet_from_text(text: str, keyword: str, context_chars: int = 300) ->
     return snippet
 
 
+def match_court(entry: dict, court_filter: str | None) -> bool:
+    """법원급 필터를 매칭한다.
+    '대법원' → 법원명이 정확히 '대법원'인 경우
+    '하급심' → path가 '하급심/' 디렉토리에 있거나 법원명이 '대법원'이 아닌 경우
+    기타 → 법원명 직접 비교 (예: '서울고등법원')
+    """
+    if not court_filter:
+        return True
+    court_name = entry.get("법원명", "")
+    if court_filter == "대법원":
+        return court_name == "대법원"
+    if court_filter == "하급심":
+        path = entry.get("path", "")
+        return "하급심/" in path or court_name != "대법원"
+    return court_filter in court_name
+
+
 def search_by_title(metadata: dict, keyword: str, case_type: str | None, court: str | None) -> list:
     """사건명(metadata)에서 키워드를 검색한다."""
     results = []
@@ -86,7 +103,7 @@ def search_by_title(metadata: dict, keyword: str, case_type: str | None, court: 
             continue
         if case_type and entry.get("사건종류", "") != case_type:
             continue
-        if court and entry.get("법원명", "") != court:
+        if not match_court(entry, court):
             continue
         results.append({**entry, "id": entry_id})
     return results
@@ -106,7 +123,7 @@ def search_by_text(repo_path: str, metadata: dict, keyword: str,
         if candidate.exists():
             search_dir = str(candidate)
 
-    cmd = ["grep", "-rl", "--include=*.md", keyword, search_dir]
+    cmd = ["grep", "-rlF", "--include=*.md", keyword, search_dir]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         matched_files = [f.strip() for f in proc.stdout.strip().split("\n") if f.strip()]
@@ -127,7 +144,7 @@ def search_by_text(repo_path: str, metadata: dict, keyword: str,
             continue
         if rel in path_to_id:
             entry_id, entry = path_to_id[rel]
-            if court and entry.get("법원명", "") != court:
+            if not match_court(entry, court):
                 continue
             results.append({**entry, "id": entry_id})
     return results
@@ -143,7 +160,7 @@ def search_by_law(repo_path: str, metadata: dict, law_name: str,
         if candidate.exists():
             search_dir = str(candidate)
 
-    cmd = ["grep", "-rl", "--include=*.md", law_name, search_dir]
+    cmd = ["grep", "-rlF", "--include=*.md", law_name, search_dir]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         matched_files = [f.strip() for f in proc.stdout.strip().split("\n") if f.strip()]
@@ -164,7 +181,7 @@ def search_by_law(repo_path: str, metadata: dict, law_name: str,
         if rel not in path_to_id:
             continue
         entry_id, entry = path_to_id[rel]
-        if court and entry.get("법원명", "") != court:
+        if not match_court(entry, court):
             continue
         # 참조조문 섹션에 법령명이 있는지 확인
         sections = extract_sections(fpath, ["참조조문"])
@@ -182,9 +199,11 @@ def sort_results(results: list) -> list:
         # 단기 연도(4xxx) 처리 — 실제로는 오래된 판례
         if date.startswith("4"):
             date = "1" + date[1:]
-        return (court_priority, date)
+        # 날짜를 역전하여 내림차순 정렬 (court_priority 오름 + date 내림)
+        inverted_date = "".join(chr(ord("9") - ord(c)) if c.isdigit() else c for c in date)
+        return (court_priority, inverted_date)
 
-    return sorted(results, key=sort_key, reverse=False)[::-1]
+    return sorted(results, key=sort_key)
 
 
 def format_results(results: list, repo_path: str, content: bool, snippet_kw: str | None, limit: int) -> list:
