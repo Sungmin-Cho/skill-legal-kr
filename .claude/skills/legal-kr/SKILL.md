@@ -54,13 +54,26 @@ Python 3.10+ (추가 패키지 불필요, 표준 라이브러리만 사용)
 
 아래 7단계를 순서대로 실행한다.
 
-### Step 1: 데이터 최신화
+### Step 1: 데이터 확인 및 최신화
 
-두 저장소를 최신 상태로 업데이트한다.
+두 저장소가 존재하는지 확인하고, 없으면 자동으로 clone한다. 이미 있으면 최신화한다.
 
 ```bash
-git -C ${SKILL_DIR}/../../../legalize-kr pull --ff-only 2>/dev/null && echo "법령 데이터 업데이트 완료" || echo "⚠️ 법령 업데이트 실패 — 기존 데이터 사용"
-git -C ${SKILL_DIR}/../../../precedent-kr pull --ff-only 2>/dev/null && echo "판례 데이터 업데이트 완료" || echo "⚠️ 판례 업데이트 실패 — 기존 데이터 사용"
+# 법령 데이터
+if [ -d "${SKILL_DIR}/../../../legalize-kr/.git" ]; then
+  git -C ${SKILL_DIR}/../../../legalize-kr pull --ff-only 2>/dev/null && echo "법령 데이터 업데이트 완료" || echo "⚠️ 법령 업데이트 실패 — 기존 데이터 사용"
+else
+  echo "법령 데이터가 없습니다. 자동으로 다운로드합니다 (최초 1회, 수 분 소요)..."
+  git clone https://github.com/legalize-kr/legalize-kr.git ${SKILL_DIR}/../../../legalize-kr && echo "법령 데이터 다운로드 완료" || echo "❌ 법령 데이터 다운로드 실패 — 네트워크를 확인하세요"
+fi
+
+# 판례 데이터
+if [ -d "${SKILL_DIR}/../../../precedent-kr/.git" ]; then
+  git -C ${SKILL_DIR}/../../../precedent-kr pull --ff-only 2>/dev/null && echo "판례 데이터 업데이트 완료" || echo "⚠️ 판례 업데이트 실패 — 기존 데이터 사용"
+else
+  echo "판례 데이터가 없습니다. 자동으로 다운로드합니다 (최초 1회, 수 분 소요)..."
+  git clone https://github.com/legalize-kr/precedent-kr.git ${SKILL_DIR}/../../../precedent-kr && echo "판례 데이터 다운로드 완료" || echo "❌ 판례 데이터 다운로드 실패 — 네트워크를 확인하세요"
+fi
 ```
 
 ### Step 2: 요청 분류 및 인터뷰
