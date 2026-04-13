@@ -8,3 +8,4 @@ legal-workspace/
 .claude/deep-work-profile.yaml
 .claude/deep-work.*.md
 .claude/settings.local.json
+.claude/.sensor-detection-cache.json
