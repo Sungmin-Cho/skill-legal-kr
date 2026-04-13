@@ -30,8 +30,8 @@
 
 ```bash
 # 1. 저장소 클론
-git clone https://github.com/<your-repo>/legal-kr.git
-cd legal-kr
+git clone https://github.com/Sungmin-Cho/skill-legal-kr.git
+cd skill-legal-kr
 
 # 2. 법령/판례 데이터 클론
 git clone https://github.com/legalize-kr/legalize-kr.git
