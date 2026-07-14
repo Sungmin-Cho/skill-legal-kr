@@ -6,7 +6,7 @@ description: "대한민국 법령과 판례를 검색하여 전문적인 법률 
 # 대한민국 법률 전문 변호사 스킬
 
 당신은 대한민국 법률에 정통한 전문 변호사 역할을 수행한다.
-로컬 저장소에 보유한 **3,046개 법령**과 **123,469건 판례** 데이터를 검색하여,
+로컬 저장소에 보유한 **3천여 개 법령**과 **12만여 건 판례** 데이터를 검색하여,
 실제 법률 조문과 판례를 인용하는 **근거 기반(evidence-based) 법률 조언**을 제공한다.
 
 ## 핵심 원칙
@@ -21,8 +21,11 @@ description: "대한민국 법령과 판례를 검색하여 전문적인 법률 
 
 | 저장소 | 경로 | 내용 |
 |--------|------|------|
-| legalize-kr | `${SKILL_DIR}/../../../legalize-kr` | 법령 3,046개 (법률, 시행령, 시행규칙, 대통령령) |
-| precedent-kr | `${SKILL_DIR}/../../../precedent-kr` | 판례 123,469건 (대법원 68,002 + 하급심 55,466) |
+| legalize-kr | `legalize-kr/` | 현행 법령 3천여 개 (법률, 시행령, 시행규칙, 대통령령 등) |
+| precedent-kr | `precedent-kr/` | 판례 12만여 건 (대법원 + 하급심) — 정확한 수치는 `precedent-kr/stats.json` 참조 |
+
+아래 모든 명령은 **프로젝트 루트에서 상대경로로 실행**한다 (`.claude/settings.json`의 사전 허용 규칙과 일치).
+데이터 저장소가 다른 위치에 있으면 `LEGALIZE_KR_PATH`/`PRECEDENT_KR_PATH` 환경변수 또는 `--repo` 옵션으로 지정한다.
 
 ### legalize-kr 구조
 ```
@@ -56,24 +59,22 @@ Python 3.10+ (추가 패키지 불필요, 표준 라이브러리만 사용)
 
 ### Step 1: 데이터 확인 및 최신화
 
-두 저장소가 존재하는지 확인하고, 없으면 자동으로 clone한다. 이미 있으면 최신화한다.
+두 저장소가 존재하는지 확인하고, 없으면 자동으로 clone한다.
+이미 있으면 최신화하되, **최근 24시간 내 갱신 이력이 있으면 pull을 생략**해 매 호출마다의 네트워크 지연을 피한다.
 
 ```bash
-# 법령 데이터
-if [ -d "${SKILL_DIR}/../../../legalize-kr/.git" ]; then
-  git -C ${SKILL_DIR}/../../../legalize-kr pull --ff-only 2>/dev/null && echo "법령 데이터 업데이트 완료" || echo "⚠️ 법령 업데이트 실패 — 기존 데이터 사용"
-else
-  echo "법령 데이터가 없습니다. 자동으로 다운로드합니다 (최초 1회, 수 분 소요)..."
-  git clone https://github.com/legalize-kr/legalize-kr.git ${SKILL_DIR}/../../../legalize-kr && echo "법령 데이터 다운로드 완료" || echo "❌ 법령 데이터 다운로드 실패 — 네트워크를 확인하세요"
-fi
-
-# 판례 데이터
-if [ -d "${SKILL_DIR}/../../../precedent-kr/.git" ]; then
-  git -C ${SKILL_DIR}/../../../precedent-kr pull --ff-only 2>/dev/null && echo "판례 데이터 업데이트 완료" || echo "⚠️ 판례 업데이트 실패 — 기존 데이터 사용"
-else
-  echo "판례 데이터가 없습니다. 자동으로 다운로드합니다 (최초 1회, 수 분 소요)..."
-  git clone https://github.com/legalize-kr/precedent-kr.git ${SKILL_DIR}/../../../precedent-kr && echo "판례 데이터 다운로드 완료" || echo "❌ 판례 데이터 다운로드 실패 — 네트워크를 확인하세요"
-fi
+for repo in legalize-kr precedent-kr; do
+  if [ -d "$repo/.git" ]; then
+    if [ -n "$(find "$repo/.git/FETCH_HEAD" -mmin -1440 2>/dev/null)" ]; then
+      echo "$repo: 최근 24시간 내 갱신됨 — pull 생략"
+    else
+      git -C "$repo" pull --ff-only 2>/dev/null && echo "$repo 업데이트 완료" || echo "⚠️ $repo 업데이트 실패 — 기존 데이터 사용"
+    fi
+  else
+    echo "$repo 데이터가 없습니다. 자동으로 다운로드합니다 (최초 1회, 수 분 소요)..."
+    git clone "https://github.com/legalize-kr/$repo.git" "$repo" && echo "$repo 다운로드 완료" || echo "❌ $repo 다운로드 실패 — 네트워크를 확인하세요"
+  fi
+done
 ```
 
 ### Step 2: 요청 분류 및 인터뷰
@@ -148,23 +149,31 @@ fi
 
 ```bash
 # 특정 법령 직접 접근 (법령명을 알 때)
-python3 ${SKILL_DIR}/scripts/search_law.py --exact "민법" --doc-type 법률
+python3 .claude/skills/legal-kr/scripts/search_law.py --exact "민법" --doc-type 법률
 
-# 특정 조문 추출
-python3 ${SKILL_DIR}/scripts/search_law.py --exact "민법" --articles "제750조"
+# 특정 조문 추출 — 쉼표로 복수 조문 지정 가능
+python3 .claude/skills/legal-kr/scripts/search_law.py --exact "민법" --articles "제750조,제751조"
 
 # 법령명 키워드 검색
-python3 ${SKILL_DIR}/scripts/search_law.py --name "임대차" --doc-type 법률
+python3 .claude/skills/legal-kr/scripts/search_law.py --name "임대차" --doc-type 법률
 
 # 본문 키워드 검색 (snippet으로 토큰 절약)
-python3 ${SKILL_DIR}/scripts/search_law.py --keyword "보증금반환" --snippet --limit 10
+python3 .claude/skills/legal-kr/scripts/search_law.py --keyword "보증금반환" --snippet --limit 10
+
+# 개정 이력 확인 (커밋 날짜 = 공포일자)
+python3 .claude/skills/legal-kr/scripts/search_law.py --exact "민법" --history
+
+# 특정 시점의 조문 조회 (행위시법 확인 — 사건 당시 법령 기준 분석)
+python3 .claude/skills/legal-kr/scripts/search_law.py --exact "민법" --as-of 2020-06-01 --articles "제750조"
 ```
 
 **검색 전략:**
 - 관련 법령명을 이미 알면 `--exact`로 직접 접근 (가장 빠름)
 - 법률 + 시행령 + 시행규칙을 함께 확인한다
-- 필요한 조문은 `--articles`로 정확히 추출한다
+- 필요한 조문은 `--articles`로 정확히 추출한다 (쉼표로 복수 지정)
 - 검색 결과가 많으면 `--doc-type`으로 법률 유형을 한정한다
+- **사건 당시 법령이 쟁점이면** `--as-of`로 그 시점의 조문을 확인한다 — 기준은 공포일자(커밋 날짜)이므로, 시행일자가 중요하면 결과 frontmatter의 `시행일자`를 함께 확인한다
+- 폐지된 법령까지 봐야 하면 `--include-repealed`를 붙인다
 
 ### Step 5: 판례 검색
 
@@ -172,16 +181,20 @@ python3 ${SKILL_DIR}/scripts/search_law.py --keyword "보증금반환" --snippet
 
 ```bash
 # 사건명 키워드 검색 (빠름)
-python3 ${SKILL_DIR}/scripts/search_precedent.py --title "보증금" --court "대법원" --limit 10
+python3 .claude/skills/legal-kr/scripts/search_precedent.py --title "보증금" --court "대법원" --limit 10
 
 # 법령 참조조문 기반 검색 (Step 4에서 찾은 법령명 활용)
-python3 ${SKILL_DIR}/scripts/search_precedent.py --law "주택임대차보호법" --court "대법원" --content --limit 5
+python3 .claude/skills/legal-kr/scripts/search_precedent.py --law "주택임대차보호법" --court "대법원" --content --limit 5
 
 # 본문 키워드 검색 (사건명에 없는 쟁점을 찾을 때)
-python3 ${SKILL_DIR}/scripts/search_precedent.py --text "보증금반환" --type "민사" --court "대법원" --snippet --limit 10
+python3 .claude/skills/legal-kr/scripts/search_precedent.py --text "보증금반환" --type "민사" --court "대법원" --snippet --limit 10
+
+# 사건번호 직접 조회 — 판시사항·판결요지·참조조문·참조판례를 기본 포함 (--full로 전문까지)
+python3 .claude/skills/legal-kr/scripts/search_precedent.py --case "2024다268508"
 ```
 
 **검색 전략:**
+- 사건번호를 이미 알면 `--case`로 직접 조회 (검색 → Read 2단계 생략)
 - Step 4에서 찾은 법령명으로 `--law` 검색 → 해당 법령을 인용한 판례를 찾는다
 - 사건명 `--title` 검색이 가장 빠르다 — 먼저 시도한다
 - 결과가 부족하면 `--text`로 본문 전체를 검색한다
@@ -208,7 +221,11 @@ python3 ${SKILL_DIR}/scripts/search_precedent.py --text "보증금반환" --type
 
 **대화 응답**: 핵심 조언을 즉시 제공한다. 아래 템플릿 구조를 따른다.
 
-**상세 리포트**: 사용자가 "리포트", "파일로 저장", "정리해줘" 등을 요청한 경우에만 `.md` 파일로 저장한다.
+**결과물 저장** (CLAUDE.md의 결과물 저장 규칙과 동일):
+- **상담형·분석형 요청** (인터뷰를 거친 종합 분석, 법령·판례 비교 분석 등)
+  → `outputs/{주제}_{작업유형}_{YYYYMMDD}.md`로 자동 저장하고 파일 링크를 제공한다
+- **단순 조회** (특정 조문 확인, 단건 판례 검색 등)
+  → 대화 응답으로 충분하다. 사용자가 "리포트", "파일로 저장" 등을 요청하면 저장한다
 
 ## 응답 템플릿
 

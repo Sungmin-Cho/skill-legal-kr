@@ -1,4 +1,4 @@
-# CLAUDE.md — Legalize KR 프로젝트
+# CLAUDE.md — legal-kr 프로젝트
 
 > 이 파일은 AI 협업 도구(Claude)가 프로젝트 컨텍스트를 빠르게 파악하기 위한 안내 문서입니다.
 
@@ -6,38 +6,52 @@
 
 ## 프로젝트 개요
 
-**Legalize KR**은 대한민국 법령 전체를 Git 저장소로 관리하는 공개 데이터 프로젝트입니다.
+**legal-kr**은 대한민국 법령·판례 데이터를 검색하여 근거 기반 법률 조언을 제공하는 Claude Code 스킬 프로젝트입니다.
+세 가지 요소로 구성됩니다:
 
-- **목적**: 모든 한국 법령을 Markdown 파일로 변환하고, 각 개정을 실제 공포일자를 가진 Git commit으로 추적
+1. **`legal-kr` 스킬** (`.claude/skills/legal-kr/`) — 변호사 스타일의 7단계 법률 상담 워크플로우 + 검색 스크립트
+2. **법령 데이터** (`legalize-kr/`) — 대한민국 법령 전체를 Git으로 관리, 각 개정이 실제 공포일자를 가진 commit
+3. **판례 데이터** (`precedent-kr/`) — 대법원·하급심 판례 12만여 건
+
 - **데이터 출처**: [국가법령정보센터 OpenAPI](https://open.law.go.kr)
 - **웹사이트**: [legalize.kr](https://legalize.kr)
-- **GitHub**: [legalize-kr/legalize-kr](https://github.com/legalize-kr/legalize-kr)
-- **라이선스**: 법령 원문은 공공저작물, 저장소 구조/메타데이터는 MIT
+- **GitHub**: [legalize-kr/legalize-kr](https://github.com/legalize-kr/legalize-kr), [legalize-kr/precedent-kr](https://github.com/legalize-kr/precedent-kr)
+- **라이선스**: 법령·판례 원문은 공공저작물, 스킬 코드와 저장소 구조/메타데이터는 MIT
 
 ---
 
 ## 저장소 구조
 
 ```
-legal-kr/                         ← 워크스페이스 루트 (선택된 폴더)
-└── legalize-kr/                  ← 메인 Git 저장소
-    ├── .git/                     ← Git 메타데이터
-    ├── README.md                 ← 프로젝트 설명서
-    └── kr/                       ← 대한민국 법령 디렉토리
-        ├── 민법/
-        │   ├── 법률.md
-        │   └── 시행령.md
-        ├── 근로기준법/
-        │   ├── 법률.md
-        │   ├── 시행령.md
-        │   └── 시행규칙.md
-        ├── 가족관계의등록등에관한규칙/
-        │   └── 대법원규칙.md
-        └── {법령명(띄어쓰기 제거)}/
-            └── {문서유형}.md
+legal-kr/                         ← 워크스페이스 루트 (이 저장소)
+├── CLAUDE.md                     ← 이 문서
+├── README.md                     ← 프로젝트 설명서
+├── .claude/
+│   ├── settings.json             ← 프로젝트 공유 권한 설정 (스킬 스크립트 실행 허용)
+│   └── skills/legal-kr/          ← 변호사 스킬
+│       ├── SKILL.md              ← 스킬 정의 (7단계 워크플로우)
+│       └── scripts/              ← search_law.py, search_precedent.py
+├── tests/                        ← 검색 스크립트 단위 테스트 (pytest)
+├── outputs/                      ← 분석 결과물 저장 디렉토리 (git 추적 제외)
+├── legalize-kr/                  ← 법령 데이터 저장소 (별도 clone, git 추적 제외)
+│   └── kr/                       ← 대한민국 법령 디렉토리 (3,000여 개)
+│       ├── 민법/
+│       │   ├── 법률.md
+│       │   └── 시행령.md
+│       ├── 근로기준법/
+│       │   ├── 법률.md
+│       │   ├── 시행령.md
+│       │   └── 시행규칙.md
+│       └── {법령명(띄어쓰기 제거)}/
+│           └── {문서유형}.md
+└── precedent-kr/                 ← 판례 데이터 저장소 (별도 clone, git 추적 제외)
+    ├── metadata.json             ← 판례 메타데이터 (사건명·사건번호·선고일자·경로)
+    ├── stats.json                ← 데이터 규모 통계
+    └── {사건종류}/{법원급}/{사건번호}.md
 ```
 
-법령 파일은 `kr/` 아래 500개 이상의 디렉토리로 구성됩니다.
+법령은 `legalize-kr/kr/` 아래 3,000여 개의 디렉토리, 판례는 `precedent-kr/` 아래 12만여 건의 파일로 구성됩니다.
+정확한 규모는 `precedent-kr/stats.json`과 `ls legalize-kr/kr | wc -l`로 확인합니다.
 
 ---
 
@@ -144,6 +158,11 @@ git -C legalize-kr log --before="2025-01-01" -1 -- kr/민법/법률.md
 
 # 현재 시행 중인 법령만 필터
 grep -rl "상태: 시행" legalize-kr/kr/
+
+# 스킬 검색 스크립트 (권장 — 구조화된 JSON 결과)
+python3 .claude/skills/legal-kr/scripts/search_law.py --exact "민법" --articles "제750조"
+python3 .claude/skills/legal-kr/scripts/search_law.py --exact "민법" --as-of 2020-06-01 --articles "제750조"  # 행위시법 조회
+python3 .claude/skills/legal-kr/scripts/search_precedent.py --case "2024다268508"
 ```
 
 ---
@@ -170,7 +189,9 @@ grep -rl "상태: 시행" legalize-kr/kr/
 
 ## 결과물 저장 규칙
 
-**이 프로젝트에서 사용자가 질문하거나 분석을 요청하면, 결과물을 반드시 파일로 저장해야 합니다.**
+**상담형·분석형 요청**(종합 법률 분석, 비교·검토 보고서, 프로젝트 분석 등)의 결과물은 **반드시 파일로 저장**합니다.
+**단순 조회**(특정 조문 확인, 단건 판례 검색 등)는 대화 응답으로 충분하며, 사용자가 요청하면 저장합니다.
+이 기준은 `legal-kr` 스킬 Step 7(출력)의 저장 규칙과 동일합니다.
 
 ### 저장 위치
 
@@ -215,28 +236,23 @@ legal-kr/
 
 ## 스킬 활용 가이드
 
-> ⚠️ **필수 규칙**: 이 프로젝트에서 사용자가 질문하거나 작업을 요청하면, **반드시 아래 legal 스킬을 먼저 호출한 후 진행**해야 합니다. 스킬을 거치지 않고 바로 답변하는 것은 허용되지 않습니다.
+> ⚠️ **필수 규칙**: 법률 관련 질문·상담·분석·검색 요청에는 **반드시 `legal-kr` 스킬을 먼저 호출한 후 진행**해야 합니다.
+> 스킬을 거치지 않고 일반 지식만으로 법률 답변을 하는 것은 허용되지 않습니다.
+> (법률과 무관한 프로젝트 관리·코드 작업에는 이 규칙이 적용되지 않습니다.)
 
-### 작업 유형별 스킬 매핑
+### 스킬 매핑
 
 | 요청 유형 | 사용할 스킬 |
 |-----------|-------------|
-| 법령 분석 · 조문 해설 · 법률 질의 | `legal:brief` (topic 모드) |
-| 계약서 · 법령 문서 검토 | `legal:contract-review` |
-| 규정 준수 · 컴플라이언스 확인 | `legal:compliance-check` |
-| 법적 위험 평가 | `legal:legal-risk-assessment` |
-| 회의 준비 · 법률 미팅 브리핑 | `legal:meeting-briefing` |
-| NDA 검토 · 분류 | `legal:triage-nda` |
-| 법률 답변 초안 작성 | `legal:respond` |
-| 문서 작성 (Word) | `anthropic-skills:docx` |
-| 문서 작성 (PPT) | `anthropic-skills:pptx` |
-| 데이터 분석 · SQL | `data:sql-queries`, `data:data-exploration` |
-| 번역 | `anthropic-skills:doc-translator` |
+| 법률 상담 · 법령 분석 · 조문 해설 · 판례 검색 · 법률 리서치 · 계약/분쟁 자문 | `legal-kr` (`.claude/skills/legal-kr/`) |
+| 문서 형식 변환 (docx/xlsx/pptx/pdf) | 별도 스킬 불필요 — 위 결과물 형식 기준에 따라 저장 |
 
 ### 스킬 호출 원칙
 
-1. **질문·분석 요청** → 먼저 적절한 `legal:*` 스킬을 호출
-2. **스킬 실행 후** → legalize-kr 저장소의 법령 파일을 직접 참조하여 조문 근거 보강
-3. **결과물 저장** → `outputs/` 디렉토리에 파일로 저장 후 링크 제공
+1. **법률 질문·상담·분석 요청** → 먼저 `legal-kr` 스킬을 호출
+   (7단계 워크플로우: 데이터 최신화 → 요청 분류·인터뷰 → 상황 분석 → 법령 검색 → 판례 검색 → 종합 분석 → 출력)
+2. **스킬 실행 후** → legalize-kr / precedent-kr 저장소의 원문 파일을 직접 참조하여 조문·판례 근거 보강
+3. **결과물 저장** → 위 결과물 저장 규칙에 따라 `outputs/`에 저장 후 링크 제공
 
-법령 파일 경로는 항상 `legalize-kr/kr/{법령명}/` 형식을 따릅니다.
+법령 파일 경로는 `legalize-kr/kr/{법령명}/{문서유형}.md`,
+판례 파일 경로는 `precedent-kr/{사건종류}/{법원급}/{사건번호}.md` 형식을 따릅니다.
