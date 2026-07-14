@@ -1,6 +1,6 @@
 # legal-kr
 
-대한민국 법령(3,046개)과 판례(123,469건)를 검색하여 근거 기반 법률 조언을 제공하는 Claude Code 프로젝트 스킬.
+대한민국 법령(3천여 개)과 판례(12만여 건)를 검색하여 근거 기반 법률 조언을 제공하는 Claude Code 프로젝트 스킬.
 
 ## 개요
 
@@ -21,8 +21,8 @@
 
 | 저장소 | 내용 | 규모 |
 |--------|------|------|
-| [legalize-kr](https://github.com/legalize-kr/legalize-kr) | 대한민국 법령 (법률, 시행령, 시행규칙, 대통령령) | 3,046개 법령, 6,907개 파일 |
-| [precedent-kr](https://github.com/legalize-kr/precedent-kr) | 대한민국 판례 (대법원 + 하급심) | 123,469건 |
+| [legalize-kr](https://github.com/legalize-kr/legalize-kr) | 대한민국 법령 (법률, 시행령, 시행규칙, 대통령령) | 3천여 개 법령 |
+| [precedent-kr](https://github.com/legalize-kr/precedent-kr) | 대한민국 판례 (대법원 + 하급심) | 12만여 건 (정확한 수치는 `precedent-kr/stats.json`) |
 
 법령 데이터는 [국가법령정보센터 OpenAPI](https://open.law.go.kr)에서 수집된 공공저작물입니다.
 
@@ -76,14 +76,19 @@ claude
 
 ```
 legal-kr/
-├── .claude/skills/legal-kr/       ← 변호사 스킬
-│   ├── SKILL.md                   ← 스킬 정의 (워크플로우 6단계)
-│   └── scripts/
-│       ├── search_law.py          ← 법령 검색
-│       └── search_precedent.py    ← 판례 검색
-├── legalize-kr/                   ← 법령 데이터 (git submodule)
-├── precedent-kr/                  ← 판례 데이터 (git submodule)
-└── README.ko.md
+├── .claude/
+│   ├── settings.json              ← 프로젝트 공유 권한 설정
+│   └── skills/legal-kr/           ← 변호사 스킬
+│       ├── SKILL.md               ← 스킬 정의 (워크플로우 7단계)
+│       └── scripts/
+│           ├── search_law.py      ← 법령 검색
+│           └── search_precedent.py ← 판례 검색
+├── tests/                         ← 검색 스크립트 단위 테스트 (pytest)
+├── outputs/                       ← 분석 결과물 (git 추적 제외)
+├── legalize-kr/                   ← 법령 데이터 (별도 clone, git 추적 제외)
+├── precedent-kr/                  ← 판례 데이터 (별도 clone, git 추적 제외)
+├── CLAUDE.md
+└── README.md
 ```
 
 ## 검색 스크립트
@@ -99,14 +104,23 @@ python3 .claude/skills/legal-kr/scripts/search_law.py --exact "민법" --article
 
 # 법령 본문 키워드 검색
 python3 .claude/skills/legal-kr/scripts/search_law.py --keyword "보증금" --snippet --limit 10
+
+# 개정 이력 확인 (커밋 날짜 = 공포일자)
+python3 .claude/skills/legal-kr/scripts/search_law.py --exact "민법" --history
+
+# 특정 시점의 조문 조회 (행위시법 확인)
+python3 .claude/skills/legal-kr/scripts/search_law.py --exact "민법" --as-of 2020-06-01 --articles "제750조"
 ```
 
 주요 옵션:
 - `--name` : 법령명에서 키워드 검색
 - `--keyword` : 법령 본문에서 키워드 검색
 - `--exact` : 정확한 법령명으로 직접 접근
-- `--doc-type` : `법률`, `시행령`, `시행규칙`, `대통령령` 필터
-- `--articles` : 특정 조문 추출 (조문 번호 또는 표제)
+- `--doc-type` : `법률`, `시행령`, `시행규칙`, `대통령령`, `기타` 필터
+- `--articles` : 특정 조문 추출 (조문 번호 또는 표제, 쉼표로 복수 지정)
+- `--history` : 법령 개정 이력 출력 (`--exact` 전용)
+- `--as-of` : 특정 날짜(공포일자 기준) 시점의 조문 조회 (`--exact` 전용)
+- `--include-repealed` : 폐지된 법령도 결과에 포함
 - `--snippet` : 키워드 주변 텍스트만 추출
 
 ### search_precedent.py — 판례 검색
@@ -120,24 +134,38 @@ python3 .claude/skills/legal-kr/scripts/search_precedent.py --law "주택임대�
 
 # 판례 본문 키워드 검색
 python3 .claude/skills/legal-kr/scripts/search_precedent.py --text "부당해고" --type "민사" --snippet --limit 10
+
+# 사건번호 직접 조회 (판시사항·판결요지·참조조문·참조판례 기본 포함)
+python3 .claude/skills/legal-kr/scripts/search_precedent.py --case "2024다268508"
 ```
 
 주요 옵션:
 - `--title` : 사건명에서 키워드 검색 (metadata 기반, 빠름)
 - `--text` : 판례 본문에서 키워드 검색
 - `--law` : 참조조문에서 법령명 검색
-- `--type` : 사건종류 필터 (`민사`, `형사`, `가사`, `세무`, `일반행정`, `특허`)
+- `--case` : 사건번호로 직접 조회 (병합 사건은 개별 번호로도 조회 가능)
+- `--type` : 사건종류 필터 (`민사`, `형사`, `가사`, `세무`, `일반행정`, `특허`, `기타`, `선거·특별`)
 - `--court` : 법원급 필터 (`대법원`, `하급심`)
 - `--content` : 판시사항 + 판결요지 포함
+- `--full` : `--case` 조회 시 판례내용(전문)까지 포함
 - `--snippet` : 키워드 주변 텍스트만 추출
 
 ## 데이터 업데이트
 
-스킬 실행 시 자동으로 `git pull`을 수행하여 최신 법령/판례를 반영합니다. 수동 업데이트:
+스킬 실행 시 자동으로 `git pull`을 수행하여 최신 법령/판례를 반영합니다.
+매 호출마다의 네트워크 지연을 피하기 위해 **최근 24시간 내 갱신 이력이 있으면 pull을 생략**합니다. 수동 업데이트:
 
 ```bash
 cd legalize-kr && git pull && cd ..
 cd precedent-kr && git pull && cd ..
+```
+
+## 테스트
+
+검색 스크립트의 단위 테스트는 `tests/`에 있습니다:
+
+```bash
+python3 -m pytest tests/
 ```
 
 ## 데이터 출처 및 인용 정보
@@ -160,7 +188,7 @@ cd precedent-kr && git pull && cd ..
 | 설명 | 대한민국 판례를 사건종류/법원급별로 분류한 Markdown 저장소 |
 | 원본 데이터 | [국가법령정보센터 OpenAPI](https://open.law.go.kr) |
 | 라이선스 | 판례 원문 — 공공저작물 (대한민국 정부 저작물) |
-| 규모 | 대법원 68,002건, 하급심 55,466건 (민사 42,016 / 일반행정 45,028 / 형사 21,624 / 세무 10,024 / 특허 3,371 / 가사 1,387) |
+| 규모 | 대법원 68,002건, 하급심 55,466건 (민사 42,016 / 일반행정 45,028 / 형사 21,624 / 세무 10,024 / 특허 3,371 / 가사 1,387) — 2026-04 수집 기준, 최신 수치는 `stats.json` |
 
 > 두 저장소는 [legalize-kr](https://github.com/legalize-kr) 조직에서 운영하며,
 > [legalize](https://github.com/legalize-dev/legalize) (스페인 법령 Git 프로젝트)에서 영감을 받았습니다.
