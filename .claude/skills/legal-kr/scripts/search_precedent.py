@@ -109,6 +109,20 @@ def search_by_title(metadata: dict, keyword: str, case_type: str | None, court: 
     return results
 
 
+def search_by_case(metadata: dict, case_no: str) -> list:
+    """사건번호로 판례를 직접 조회한다.
+    병합 사건('2024다227606, 227620')은 쉼표로 나뉜 개별 번호 각각으로 조회 가능하다.
+    부분 일치는 지원하지 않는다 (번호 오매칭 방지).
+    """
+    query = case_no.strip()
+    results = []
+    for entry_id, entry in metadata.items():
+        numbers = [n.strip() for n in entry.get("사건번호", "").split(",")]
+        if query in numbers:
+            results.append({**entry, "id": entry_id})
+    return results
+
+
 def search_by_text(repo_path: str, metadata: dict, keyword: str,
                    case_type: str | None, court: str | None) -> list:
     """판례 본문(판시사항+판결요지+참조조문)에서 키워드를 검색한다."""
@@ -252,10 +266,12 @@ def main():
     group.add_argument("--title", help="사건명에서 키워드 검색 (metadata 기반, 빠름)")
     group.add_argument("--text", help="판례 본문에서 키워드 검색 (grep 기반)")
     group.add_argument("--law", help="참조조문에서 법령명 검색")
+    group.add_argument("--case", help="사건번호로 직접 조회 (예: 2024다268508)")
 
-    parser.add_argument("--type", help="사건종류 필터 (민사, 형사, 가사, 세무, 일반행정, 특허)")
+    parser.add_argument("--type", help="사건종류 필터 (민사, 형사, 가사, 세무, 일반행정, 특허, 기타, 선거·특별)")
     parser.add_argument("--court", help="법원급 필터 (대법원, 하급심)")
     parser.add_argument("--content", action="store_true", help="판시사항+판결요지 포함")
+    parser.add_argument("--full", action="store_true", help="--case 조회 시 판례내용(전문)까지 포함")
     parser.add_argument("--snippet", action="store_true", help="키워드 주변 텍스트만 추출")
     parser.add_argument("--limit", type=int, default=10, help="결과 개수 제한 (기본: 10)")
     args = parser.parse_args()
@@ -263,6 +279,28 @@ def main():
     metadata = load_metadata(args.repo)
     if not metadata:
         print(json.dumps([]), ensure_ascii=False)
+        return
+
+    if args.case:
+        # 사건번호 직접 조회: 주요 섹션을 기본 포함하여 검색→Read 2단계를 줄인다
+        sections = ["판시사항", "판결요지", "참조조문", "참조판례"]
+        if args.full:
+            sections.append("판례내용")
+        output = []
+        for entry in sort_results(search_by_case(metadata, args.case))[:args.limit]:
+            item = {
+                "id": entry.get("id", ""),
+                "사건명": entry.get("사건명", ""),
+                "사건번호": entry.get("사건번호", ""),
+                "선고일자": entry.get("선고일자", ""),
+                "법원명": entry.get("법원명", ""),
+                "사건종류": entry.get("사건종류", ""),
+                "citation": make_citation(entry),
+                "path": entry.get("path", ""),
+            }
+            item.update(extract_sections(str(Path(args.repo) / entry.get("path", "")), sections))
+            output.append(item)
+        print(json.dumps(output, ensure_ascii=False, indent=2))
         return
 
     if args.title:
