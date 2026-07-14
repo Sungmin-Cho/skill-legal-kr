@@ -10,3 +10,5 @@ legal-workspace/
 .claude/settings.local.json
 .claude/.sensor-detection-cache.json
 outputs/
+__pycache__/
+*.pyc
