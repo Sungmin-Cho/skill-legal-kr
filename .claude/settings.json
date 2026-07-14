@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 .claude/skills/legal-kr/scripts/search_law.py:*)",
+      "Bash(python3 .claude/skills/legal-kr/scripts/search_precedent.py:*)",
+      "Bash(python3 -m pytest:*)",
+      "Bash(git -C legalize-kr pull:*)",
+      "Bash(git -C precedent-kr pull:*)",
+      "Bash(git clone https://github.com/legalize-kr/:*)",
+      "Bash(find legalize-kr/.git/FETCH_HEAD:*)",
+      "Bash(find precedent-kr/.git/FETCH_HEAD:*)"
+    ]
+  }
+}

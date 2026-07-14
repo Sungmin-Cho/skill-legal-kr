@@ -9,3 +9,4 @@ legal-workspace/
 .claude/deep-work.*.md
 .claude/settings.local.json
 .claude/.sensor-detection-cache.json
+outputs/
