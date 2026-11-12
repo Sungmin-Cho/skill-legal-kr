@@ -40,12 +40,15 @@ legal-kr/
 ├── legalize-kr/                      # 법령 데이터(별도 clone)
 │   └── kr/{법령명}/{문서유형}.md
 └── precedent-kr/                     # 판례 데이터(별도 clone)
-    ├── metadata.json
-    ├── stats.json
-    └── {사건종류}/{법원급}/{사건번호}.md
+    ├── metadata.json                 # 검색 인덱스(자동 생성, git 추적 제외)
+    ├── stats.json                    # 규모 통계(자동 생성, git 추적 제외)
+    └── {사건종류}/{법원급}/{법원명}_{선고일자}_{사건번호}.md
 ```
 
-정확한 데이터 규모는 고정값을 신뢰하지 말고 다음 명령으로 확인한다.
+`metadata.json`과 `stats.json`은 precedent-kr가 git으로 배포하지 않는다(`.gitignore`).
+`search_precedent.py`가 첫 실행 시와 저장소 HEAD가 바뀐 뒤 판례 frontmatter로 자동 생성하며, 이때 수 분이 걸릴 수 있다.
+
+정확한 데이터 규모는 고정값을 신뢰하지 말고 다음 명령으로 확인한다. `stats.json`이 없으면 판례 검색을 한 번 실행해 생성한다.
 
 ```bash
 ls legalize-kr/kr | wc -l

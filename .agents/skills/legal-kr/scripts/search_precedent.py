@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 DEFAULT_REPO = os.environ.get(
@@ -15,14 +16,126 @@ DEFAULT_REPO = os.environ.get(
 )
 
 
-def load_metadata(repo_path: str) -> dict:
-    """metadata.json을 로딩한다."""
-    meta_path = Path(repo_path) / "metadata.json"
-    if not meta_path.exists():
-        print(f"metadata.json not found: {meta_path}", file=sys.stderr)
+INDEX_KEY = "__index__"  # 자동 생성 인덱스의 메타 정보 (판례 항목이 아님)
+FRONTMATTER_KEYS = ("판례일련번호", "사건번호", "사건명", "법원명", "법원등급", "사건종류", "선고일자")
+
+
+def git_head(repo_path: str) -> str | None:
+    """저장소의 현재 git HEAD 커밋을 반환한다. git 저장소가 아니면 None."""
+    try:
+        proc = subprocess.run(["git", "-C", str(repo_path), "rev-parse", "HEAD"],
+                              capture_output=True, text=True, timeout=10)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
+def parse_frontmatter(filepath: Path) -> dict:
+    """판례 파일의 YAML frontmatter에서 검색에 필요한 키만 읽는다 (표준 라이브러리만 사용)."""
+    try:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
+            if f.readline().strip() != "---":
+                return {}
+            data = {}
+            for line in f:
+                line = line.rstrip("\n")
+                if line.strip() == "---":
+                    break
+                key, sep, value = line.partition(":")
+                key = key.strip()
+                if not sep or key not in FRONTMATTER_KEYS:
+                    continue
+                value = value.strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                    value = value[1:-1]
+                data[key] = value
+            return data
+    except (FileNotFoundError, PermissionError, IsADirectoryError):
         return {}
-    with open(meta_path, encoding="utf-8") as f:
-        return json.load(f)
+
+
+def build_metadata(repo_path: str) -> dict:
+    """판례 파일의 frontmatter를 읽어 metadata 인덱스를 만든다.
+    반환 형식: {판례일련번호: {사건명, 사건번호, 선고일자, 법원명, 사건종류, path}}
+    path는 저장소 기준 상대 경로이며 OS와 무관하게 '/'로 구분한다.
+    """
+    root = Path(repo_path)
+    files = [fp for fp in root.glob("*/*/*.md") if ".git" not in fp.parts]
+    # 파일 12만여 개를 여는 I/O가 대부분이므로 스레드로 병렬 처리한다.
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        parsed = pool.map(parse_frontmatter, files, chunksize=256)
+        pairs = list(zip(files, parsed))
+    metadata = {}
+    for fp, fm in pairs:
+        if not fm:
+            continue
+        rel = fp.relative_to(root).as_posix()
+        entry_id = fm.get("판례일련번호") or rel
+        metadata[entry_id] = {
+            "사건명": fm.get("사건명", ""),
+            "사건번호": fm.get("사건번호", ""),
+            "선고일자": fm.get("선고일자", ""),
+            "법원명": fm.get("법원명", ""),
+            "사건종류": fm.get("사건종류", "") or fp.parts[-3],
+            "path": rel,
+        }
+    return metadata
+
+
+def build_stats(metadata: dict) -> dict:
+    """metadata 인덱스로 데이터 규모 통계를 만든다."""
+    by_type, by_level = {}, {}
+    for entry in metadata.values():
+        parts = entry.get("path", "").split("/")
+        by_type[entry.get("사건종류", "")] = by_type.get(entry.get("사건종류", ""), 0) + 1
+        level = parts[1] if len(parts) > 2 else ""
+        by_level[level] = by_level.get(level, 0) + 1
+    return {"total": len(metadata), "사건종류": by_type, "법원등급": by_level}
+
+
+def write_json(path: Path, data) -> None:
+    """JSON 파일을 원자적으로 쓴다. 실패해도 검색은 계속한다."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    except OSError as e:
+        print(f"{path.name} 저장 실패(검색은 계속): {e}", file=sys.stderr)
+
+
+def load_metadata(repo_path: str) -> dict:
+    """metadata.json을 로딩한다.
+    precedent-kr 저장소는 metadata.json·stats.json을 git으로 배포하지 않는다(.gitignore).
+    파일이 없거나, 이 스크립트가 만든 인덱스가 현재 git HEAD와 다르면
+    판례 frontmatter로 다시 만들어 저장한다. 직접 넣은 metadata.json(인덱스 정보 없음)은 그대로 쓴다.
+    """
+    meta_path = Path(repo_path) / "metadata.json"
+    if not Path(repo_path).is_dir():
+        print(f"precedent-kr 저장소를 찾을 수 없습니다: {repo_path}", file=sys.stderr)
+        return {}
+    head = git_head(repo_path)
+    if meta_path.exists():
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            data = None
+        if isinstance(data, dict):
+            index = data.pop(INDEX_KEY, None)
+            if index is None or index.get("head") == head:
+                return data
+    print("metadata.json 인덱스를 판례 파일에서 생성합니다 (저장소 갱신 후 최초 1회, 수 분 소요)...",
+          file=sys.stderr)
+    metadata = build_metadata(repo_path)
+    if not metadata:
+        print(f"판례 파일을 찾지 못했습니다: {repo_path}", file=sys.stderr)
+        return {}
+    write_json(meta_path, {INDEX_KEY: {"head": head}, **metadata})
+    write_json(Path(repo_path) / "stats.json", {**build_stats(metadata), "head": head})
+    return metadata
 
 
 def make_citation(entry: dict) -> str:
@@ -123,6 +236,14 @@ def search_by_case(metadata: dict, case_no: str) -> list:
     return results
 
 
+def relative_posix(fpath: str, repo_path: str) -> str | None:
+    """grep 결과 경로를 metadata의 path 형식(저장소 기준, '/' 구분)으로 바꾼다."""
+    try:
+        return Path(fpath).resolve().relative_to(Path(repo_path).resolve()).as_posix()
+    except ValueError:
+        return None
+
+
 def search_by_text(repo_path: str, metadata: dict, keyword: str,
                    case_type: str | None, court: str | None) -> list:
     """판례 본문(판시사항+판결요지+참조조문)에서 키워드를 검색한다."""
@@ -151,10 +272,8 @@ def search_by_text(repo_path: str, metadata: dict, keyword: str,
 
     results = []
     for fpath in matched_files:
-        fp = Path(fpath)
-        try:
-            rel = str(fp.relative_to(repo_path))
-        except ValueError:
+        rel = relative_posix(fpath, repo_path)
+        if rel is None:
             continue
         if rel in path_to_id:
             entry_id, entry = path_to_id[rel]
@@ -187,10 +306,8 @@ def search_by_law(repo_path: str, metadata: dict, law_name: str,
 
     results = []
     for fpath in matched_files:
-        fp = Path(fpath)
-        try:
-            rel = str(fp.relative_to(repo_path))
-        except ValueError:
+        rel = relative_posix(fpath, repo_path)
+        if rel is None:
             continue
         if rel not in path_to_id:
             continue
@@ -278,7 +395,7 @@ def main():
 
     metadata = load_metadata(args.repo)
     if not metadata:
-        print(json.dumps([]), ensure_ascii=False)
+        print(json.dumps([], ensure_ascii=False))
         return
 
     if args.case:
