@@ -22,7 +22,7 @@ description: "대한민국 법령과 판례를 검색하여 전문적인 법률 
 | 저장소 | 경로 | 내용 |
 |--------|------|------|
 | legalize-kr | `legalize-kr/` | 현행 법령 3천여 개 (법률, 시행령, 시행규칙, 대통령령 등) |
-| precedent-kr | `precedent-kr/` | 판례 12만여 건 (대법원 + 하급심) — 정확한 수치는 `precedent-kr/stats.json` 참조 |
+| precedent-kr | `precedent-kr/` | 판례 12만여 건 (대법원 + 하급심) — 정확한 수치는 `precedent-kr/stats.json` 참조 (판례 검색 첫 실행 시 자동 생성, 수 분 소요) |
 
 아래 모든 명령은 **프로젝트 루트에서 상대경로로 실행**한다 (`.claude/settings.json`의 사전 허용 규칙과 일치).
 데이터 저장소가 다른 위치에 있으면 `LEGALIZE_KR_PATH`/`PRECEDENT_KR_PATH` 환경변수 또는 `--repo` 옵션으로 지정한다.
